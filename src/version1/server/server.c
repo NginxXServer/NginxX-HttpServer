@@ -1,16 +1,16 @@
-/* server.c */
+#include "server.h"
+#include "../document/document.h"
+#include "../http/parser.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include "../document/document.c"
-#include "../http/parser.c"
 
 #define PORTNUM 39020 // 서버 포트 번호
 #define BUFSIZE 1024  // 버퍼 크기
 
-int main(void) {
+int start_server(void) {
     int sd, ns;
     struct sockaddr_in sin, cli;
     socklen_t clientlen = sizeof(cli);

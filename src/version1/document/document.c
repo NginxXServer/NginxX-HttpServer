@@ -1,11 +1,13 @@
+#include "document.h"
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/socket.h>
 
 // 문서 요청 처리
 void handle_document_request(int client_sock, const char *doc_name) {
     char path[256];
-    snprintf(path, sizeof(path), "./docs/%s", doc_name); // 문서 경로 생성
+    snprintf(path, sizeof(path), "../../docs/%s", doc_name); // 문서 경로 생성
 
     // 문서 파일 열기
     FILE *file = fopen(path, "r");

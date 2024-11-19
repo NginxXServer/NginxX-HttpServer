@@ -1,26 +1,21 @@
 CC = gcc
 CFLAGS = -Wall -O -g
 
-SRC_DIR = src/version1
-DOC_DIR = $(SRC_DIR)/document
-HTTP_DIR = $(SRC_DIR)/http
-SERVER_DIR = $(SRC_DIR)/server
-UTILS_DIR = $(SRC_DIR)/utils
+bin = http_server
 
-TARGET = http_server
-T1 = main
-OBJ = $(DOC_DIR)/document.o $(HTTP_DIR)/parser.o $(SERVER_DIR)/server.o $(T1).o
+t1 = main
+document_src = document/document
+parser_src = http/parser
+server_src = server/server
+objs = $(t1).o $(document_src).o $(parser_src).o $(server_src).o
 
-all: $(TARGET)
+all: $(bin)
 
-$(TARGET): $(OBJ)
-	$(CC) $(OBJ) -o $@
-
+$(bin): $(objs)
+	$(CC) $(objs) -o $@
+	
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-run: $(TARGET)
-	./$(TARGET)
-
 clean:
-	rm -f $(TARGET) $(OBJ)
+	rm -f $(bin) *.o document/*.o http/*.o server/*.o
