@@ -1,11 +1,12 @@
 #include "document.h"
+#include "../logger/logger.h"
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/socket.h>
 
 // 문서 요청 처리
-void handle_document_request(int client_sock, const char *doc_name) {
+void handle_document_request(int client_sock, int server_port, const char *client_ip, const char *doc_name) {
     char path[256];
     snprintf(path, sizeof(path), "../../docs/%s", doc_name); // 문서 경로 생성
 
@@ -19,6 +20,8 @@ void handle_document_request(int client_sock, const char *doc_name) {
                  "Content-Type: application/json\r\n\r\n"
                  "{ \"status\": 404, \"error\": \"Document not found\" }");
         send(client_sock, response, strlen(response), 0);
+
+        log_http_response(server_port, client_ip, 404, response); // server_port 추가
         return;
     }
 
@@ -28,7 +31,7 @@ void handle_document_request(int client_sock, const char *doc_name) {
     fclose(file);
     content[bytes_read] = '\0'; // 파일 내용을 문자열로 처리
 
-    // HTTP 응답 생성 
+    // HTTP 응답 생성
     snprintf(response, sizeof(response),
              "HTTP/1.1 200 OK\r\n"
              "Content-Type: application/json\r\n\r\n"
@@ -36,4 +39,6 @@ void handle_document_request(int client_sock, const char *doc_name) {
              doc_name, content);
 
     send(client_sock, response, strlen(response), 0); // 응답 전송
+
+    log_http_response(server_port, client_ip, 200, response); // server_port 추가
 }
