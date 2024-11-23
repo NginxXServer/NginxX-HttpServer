@@ -1,6 +1,7 @@
 #include "server.h"
 #include "../document/document.h"
 #include "../http/parser.h"
+#include "../logger/logger.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +14,7 @@
 #define BUFSIZE 1024  // 버퍼 크기
 #define NUM_PROCESS 5 // 프로세스 개수
 
-void handle_client(int client_sock);
+void handle_client(int client_sock, int server_port);
 
 int start_server(void) {
     int sd;
@@ -56,7 +57,7 @@ int start_server(void) {
                 exit(1);
             }
 
-            printf("Process Index %d (PID %d): Starting on port %d\n", i + 1, getpid(), child_port);
+            log_message(child_port, LOG_INFO, "Starting Server: Port %d", child_port);
 
             // 클라이언트 요청 처리 루프
             while (1) {
@@ -69,9 +70,9 @@ int start_server(void) {
                     continue;
                 }
 
-                printf("Process %d: Client connected (%s) at port %d\n", i, inet_ntoa(cli.sin_addr), child_port);
-                handle_client(ns); // 요청 처리
-                close(ns);         // 소켓 닫기
+                log_message(child_port, LOG_INFO, "Connect Client: IP %s", inet_ntoa(cli.sin_addr));
+                handle_client(ns, child_port); // 요청 처리
+                close(ns); // 소켓 닫기
             }
 
             close(sd);
@@ -91,50 +92,64 @@ int start_server(void) {
 }
 
 // 클라이언트 요청 처리 함수
-void handle_client(int client_sock) {
+void handle_client(int client_sock, int server_port) {
     char buf[BUFSIZE];
     char doc_name[256];
+    struct sockaddr_in client_addr;
+    socklen_t addr_len = sizeof(client_addr);
+
+    // 클라이언트 정보 가져오기
+    getpeername(client_sock, (struct sockaddr *)&client_addr, &addr_len);
+    const char *client_ip = inet_ntoa(client_addr.sin_addr);
+
     int bytes_read = recv(client_sock, buf, BUFSIZE - 1, 0);
 
     if (bytes_read > 0) {
         buf[bytes_read] = '\0'; // 요청 끝에 null 추가
-        printf("요청 수신: %s\n", buf);
 
         // HTTP 요청 파싱
         int parse_result = parse_http_request(buf, doc_name, sizeof(doc_name));
         if (parse_result == 0) {
             // 문서 요청 처리
-            handle_document_request(client_sock, doc_name);
+            handle_document_request(client_sock, server_port, client_ip, doc_name);
         } else {
             // 잘못된 요청에 대한 응답
             char response[256];
+            int status_code;
+
             switch (parse_result) {
                 case 400:
+                    status_code = 400;
                     snprintf(response, sizeof(response),
                              "HTTP/1.1 400 Bad Request\r\n"
                              "Content-Type: application/json\r\n\r\n"
                              "{ \"status\": 400, \"error\": \"Invalid request format\" }");
                     break;
                 case 405:
+                    status_code = 405;
                     snprintf(response, sizeof(response),
                              "HTTP/1.1 405 Method Not Allowed\r\n"
                              "Content-Type: application/json\r\n\r\n"
                              "{ \"status\": 405, \"error\": \"Only GET method is allowed\" }");
                     break;
                 case 414:
+                    status_code = 414;
                     snprintf(response, sizeof(response),
                              "HTTP/1.1 414 URI Too Long\r\n"
                              "Content-Type: application/json\r\n\r\n"
                              "{ \"status\": 414, \"error\": \"Requested URI is too long\" }");
                     break;
                 default:
+                    status_code = 500;
                     snprintf(response, sizeof(response),
                              "HTTP/1.1 500 Internal Server Error\r\n"
                              "Content-Type: application/json\r\n\r\n"
                              "{ \"status\": 500, \"error\": \"Unknown server error\" }");
                     break;
             }
+
             send(client_sock, response, strlen(response), 0);
+            log_http_response(server_port, client_ip, status_code, response);
         }
     } else if (bytes_read == -1) {
         // 500 Internal Server Error: 서버 처리 중 오류가 발생할 경우
@@ -144,5 +159,6 @@ void handle_client(int client_sock) {
             "Content-Type: application/json\r\n\r\n"
             "{ \"status\": 500, \"error\": \"Server error occurred\" }";
         send(client_sock, server_error, strlen(server_error), 0);
+        log_http_response(server_port, client_ip, 500, server_error);
     }
 }
