@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>프로젝트 개요</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 20px;
+            background-color: #f9f9f9;
+        }
+        h1, h2, h3 {
+            color: #333;
+        }
+        .section {
+            margin-bottom: 30px;
+        }
+        ul {
+            padding-left: 20px;
+        }
+        ul li {
+            margin-bottom: 10px;
+        }
+        code {
+            background-color: #eee;
+            padding: 2px 2px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>💻 프로젝트 개요</h1>
+    </header>
+
+    <section class="section">
+        <h2>주요 기능</h2>
+        <ul>
+            <li>기본적인 HTTP 요청, 응답 처리
+                <ul>
+                    <li>GET 요청에 대해서 클라이언트의 입력에 따른 document를 반환</li>
+                </ul>
+            </li>
+            <li>HTTP 메소드 구분
+                <ul>
+                    <li>단, <code>content-type</code>은 JSON만 다룸</li>
+                </ul>
+            </li>
+            <li>로드밸런서, 리버스 프록시</li>
+            <li>서버 헬스 체크</li>
+        </ul>
+    </section>
+
+    <section class="section">
+        <h2>특장점</h2>
+        <ul>
+            <li>epoll 기반의 이벤트 처리</li>
+            <li>스레드 풀 사용</li>
+            <li>리버스 프록시 및 로드밸런싱
+                <ul>
+                    <li><b>RR</b>: RoundRobin 방식으로 단순하게 모든 서버에 균등하게 요청을 분배함. 모든 서버의 성능이 같은 swist 서버 환경의 특성상 적합하다고 판단</li>
+                    <li><b>LC</b>: 실시간 서버 부하 상태를 반영하여 효율적으로 부하를 분산하지만 구현이 복잡함</li>
+                </ul>
+            </li>
+            <li>주기적인 서버 모니터링</li>
+        </ul>
+    </section>
+
+    <section class="section">
+        <h2>💡 프로젝트 평가</h2>
+        <h3>wrk</h3>
+        <ul>
+            <li>다른 웹 서버 벤치마크에 비해 가벼우면서도 마이크로초 단위의 정밀한 타이밍 측정이 가능하고 통계 데이터, 상세한 에러 리포팅을 제공</li>
+            <li>wrk를 통한 Throughput, 응답 시간, 에러율, 동시 사용자 수 평가</li>
+            <li>정적 부하 테스트, 최대 부하 테스트, 스파이크 테스트 진행</li>
+            <li>wrk를 활용한 테스트 자동화 구현 예정</li>
+            <li>wrk의 결과를 바탕으로 각 버전별 그래프를 생성하여 시각적으로 성능 변화를 확인하고 최대한 성능을 개선하는 것이 목표</li>
+        </ul>
+    </section>
+</body>
+</html>

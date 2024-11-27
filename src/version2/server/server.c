@@ -30,10 +30,25 @@ int start_server(void) {
 
         if (pid == 0) { // 자식 프로세스
             int child_port = BASEPORT + i; // 각 자식의 고유 포트 계산
+            int optvalue = 1; // 소켓 옵션 값
             
             // 새로운 소켓 생성
             if ((sd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
                 perror("socket");
+                exit(1);
+            }
+
+            // SO_REUSEADDR 설정
+            if (setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &optvalue, sizeof(optvalue)) == -1) {
+                perror("setsockopt");
+                close(sd);
+                exit(1);
+            }
+
+            // SO_REUSEPORT 설정
+            if (setsockopt(sd, SOL_SOCKET, SO_REUSEPORT, &optvalue, sizeof(optvalue)) == -1) {
+                perror("setsockopt SO_REUSEPORT");
+                close(sd);
                 exit(1);
             }
 
@@ -70,7 +85,7 @@ int start_server(void) {
                     continue;
                 }
 
-                log_message(child_port, LOG_INFO, "Connect Client: IP %s", inet_ntoa(cli.sin_addr));
+                log_message(child_port, LOG_INFO, "Connect ProxyServer: IP %s", inet_ntoa(cli.sin_addr));
                 handle_client(ns, child_port); // 요청 처리
                 close(ns); // 소켓 닫기
             }
@@ -79,7 +94,7 @@ int start_server(void) {
             exit(0); // 자식 프로세스 종료
         }
     }
-
+    
     // 부모 프로세스가 자식 프로세스의 종료 상태를 무시하도록 설정
     // SIGCHLD 시그널이 발생하면, 부모는 자식의 종료 상태를 기다리지 않고 무시
     // => 인해 자식 프로세스가 종료되었을 때 좀비 프로세스를 방지
@@ -114,39 +129,47 @@ void handle_client(int client_sock, int server_port) {
             handle_document_request(client_sock, server_port, client_ip, doc_name);
         } else {
             // 잘못된 요청에 대한 응답
-            char response[256];
+            char response[1024];
             int status_code;
+            const char *error_title;
+            const char *error_message;
 
             switch (parse_result) {
                 case 400:
                     status_code = 400;
-                    snprintf(response, sizeof(response),
-                             "HTTP/1.1 400 Bad Request\r\n"
-                             "Content-Type: application/json\r\n\r\n"
-                             "{ \"status\": 400, \"error\": \"Invalid request format\" }");
+                    error_title = "400 Bad Request";
+                    error_message = "The server could not understand your request.";
                     break;
                 case 405:
                     status_code = 405;
-                    snprintf(response, sizeof(response),
-                             "HTTP/1.1 405 Method Not Allowed\r\n"
-                             "Content-Type: application/json\r\n\r\n"
-                             "{ \"status\": 405, \"error\": \"Only GET method is allowed\" }");
+                    error_title = "405 Method Not Allowed";
+                    error_message = "The server only supports the GET method.";
                     break;
                 case 414:
                     status_code = 414;
-                    snprintf(response, sizeof(response),
-                             "HTTP/1.1 414 URI Too Long\r\n"
-                             "Content-Type: application/json\r\n\r\n"
-                             "{ \"status\": 414, \"error\": \"Requested URI is too long\" }");
+                    error_title = "414 URI Too Long";
+                    error_message = "The requested URI is too long for the server to handle.";
                     break;
                 default:
                     status_code = 500;
-                    snprintf(response, sizeof(response),
-                             "HTTP/1.1 500 Internal Server Error\r\n"
-                             "Content-Type: application/json\r\n\r\n"
-                             "{ \"status\": 500, \"error\": \"Unknown server error\" }");
+                    error_title = "500 Internal Server Error";
+                    error_message = "An unknown error occurred on the server.";
                     break;
             }
+
+            // HTML 응답 생성
+            snprintf(response, sizeof(response),
+                     "HTTP/1.1 %d %s\r\n"
+                     "Content-Type: text/html\r\n\r\n"
+                     "<!DOCTYPE html>"
+                     "<html>"
+                     "<head><title>%s</title></head>"
+                     "<body>"
+                     "<h1>%s</h1>"
+                     "<p>%s</p>"
+                     "</body>"
+                     "</html>",
+                     status_code, error_title, error_title, error_title, error_message);
 
             send(client_sock, response, strlen(response), 0);
             log_http_response(server_port, client_ip, status_code, response);
@@ -156,8 +179,16 @@ void handle_client(int client_sock, int server_port) {
         perror("recv");
         const char *server_error =
             "HTTP/1.1 500 Internal Server Error\r\n"
-            "Content-Type: application/json\r\n\r\n"
-            "{ \"status\": 500, \"error\": \"Server error occurred\" }";
+            "Content-Type: text/html\r\n\r\n"
+            "<!DOCTYPE html>"
+            "<html>"
+            "<head><title>500 Internal Server Error</title></head>"
+            "<body>"
+            "<h1>500 Internal Server Error</h1>"
+            "<p>An error occurred while processing your request.</p>"
+            "</body>"
+            "</html>";
+
         send(client_sock, server_error, strlen(server_error), 0);
         log_http_response(server_port, client_ip, 500, server_error);
     }
