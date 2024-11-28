@@ -9,12 +9,17 @@
 #include <arpa/inet.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <sys/epoll.h>
+#include <fcntl.h>
+#include <errno.h> 
 
-#define BASEPORT 32020 // 베이스 서버 포트 번호
+#define BASEPORT 39020 // 베이스 서버 포트 번호
 #define BUFSIZE 1024  // 버퍼 크기
 #define NUM_PROCESS 5 // 프로세스 개수
+#define MAX_EVENTS 100 // 최대 이벤트 수
 
 void handle_client(int client_sock, int server_port);
+int make_socket_non_blocking(int sock);
 
 int start_server(void) {
     int sd;
@@ -74,23 +79,90 @@ int start_server(void) {
 
             log_message(child_port, LOG_INFO, "Starting Server: Port %d", child_port);
 
+            // epoll 초기화
+            int epoll_fd = epoll_create1(0);
+            if (epoll_fd == -1) {
+                perror("epoll_create1");
+                close(sd);
+                exit(1);
+            }
+
+            // 소켓을 epoll에 등록
+            struct epoll_event event, events[MAX_EVENTS];
+            event.data.fd = sd;
+            event.events = EPOLLIN | EPOLLET; //ET(Edge Trigger) 방식으로 설정
+            if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sd, &event) == -1) {
+                perror("epoll_ctl");
+                close(sd);
+                close(epoll_fd);
+                exit(1);
+            }
+
+            // 소켓을 비동기로 설정
+            if (make_socket_non_blocking(sd) == -1) {
+                close(sd);
+                close(epoll_fd);
+                exit(1);
+            }
+
             // 클라이언트 요청 처리 루프
             while (1) {
-                struct sockaddr_in cli;
-                socklen_t clientlen = sizeof(cli);
-                int ns = accept(sd, (struct sockaddr *)&cli, &clientlen);
-
-                if (ns == -1) {
-                    perror("accept");
-                    continue;
+                int num_events = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+                if (num_events == -1) {
+                    perror("epoll_wait");
+                    break;
                 }
 
-                log_message(child_port, LOG_INFO, "Request: IP %s", inet_ntoa(cli.sin_addr));
-                handle_client(ns, child_port); // 요청 처리
-                close(ns); // 소켓 닫기
+                for (int j = 0; j < num_events; j++) {
+                    if (events[j].events & (EPOLLERR | EPOLLHUP)) {
+                        // 에러 발생 시 소켓 닫기
+                        close(events[j].data.fd);
+                        continue;
+                    }
+
+                    if (events[j].data.fd == sd) {
+                        // 새로운 클라이언트 연결 처리
+                        while (1) {
+                            struct sockaddr_in cli;
+                            socklen_t clientlen = sizeof(cli);
+                            int ns = accept(sd, (struct sockaddr *)&cli, &clientlen);
+
+                            if (ns == -1) {
+                                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                                    break; // 모든 클라이언트 연결 처리 완료
+                                } else {
+                                    perror("accept");
+                                    break;
+                                }
+                            }
+
+                            log_message(child_port, LOG_INFO, "New Connection from IP: %s", inet_ntoa(cli.sin_addr));
+
+                            // 클라이언트 소켓을 비동기로 설정
+                            if (make_socket_non_blocking(ns) == -1) {
+                                close(ns);
+                                continue;
+                            }
+
+                            // 클라이언트 소켓을 epoll에 등록
+                            event.data.fd = ns;
+                            event.events = EPOLLIN | EPOLLET;
+                            if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, ns, &event) == -1) {
+                                perror("epoll_ctl: add client");
+                                close(ns);
+                                continue;
+                            }
+                        }
+                    } else if (events[j].events & EPOLLIN) {
+                        // 클라이언트 요청 처리
+                        handle_client(events[j].data.fd, child_port);
+                        close(events[j].data.fd); // 요청 처리 후 소켓 닫기
+                    }
+                }
             }
 
             close(sd);
+            close(epoll_fd);
             exit(0); // 자식 프로세스 종료
         }
     }
@@ -103,6 +175,20 @@ int start_server(void) {
         sleep(1); // 무한 대기
     }
 
+    return 0;
+}
+
+// 소켓을 비동기로 설정
+int make_socket_non_blocking(int sock) {
+    int flags = fcntl(sock, F_GETFL, 0);
+    if (flags == -1) {
+        perror("fcntl");
+        return -1;
+    }
+    if (fcntl(sock, F_SETFL, flags | O_NONBLOCK) == -1) {
+        perror("fcntl");
+        return -1;
+    }
     return 0;
 }
 
