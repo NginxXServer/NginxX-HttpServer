@@ -10,7 +10,7 @@
 #include <sys/wait.h>
 #include <signal.h>
 
-#define BASEPORT 32020 // 베이스 서버 포트 번호
+#define BASEPORT 39020 // 베이스 서버 포트 번호
 #define BUFSIZE 1024  // 버퍼 크기
 #define NUM_PROCESS 5 // 프로세스 개수
 
