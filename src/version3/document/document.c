@@ -1,14 +1,21 @@
-#include "document.h"
-#include "../logger/logger.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <errno.h>
+
+#include "document.h"
+#include "../logger/logger.h"
+
+#define CHUNK_SIZE (1024 * 1024) // 1MB
 
 // URI로부터 Content-Type 찾기
-void find_mime(char *ct_type, const char *uri) {
+void find_mime(char *ct_type, const char *uri)
+{
     const char *ext = strrchr(uri, '.'); // 확장자 찾기
-    if (!ext) {
+    if (!ext)
+    {
         strcpy(ct_type, "text/plain"); // 확장자가 없으면 기본값
         return;
     }
@@ -27,17 +34,15 @@ void find_mime(char *ct_type, const char *uri) {
         strcpy(ct_type, "text/plain"); // 기본 MIME 타입
 }
 
-
-// 문서 요청 처리
-void handle_document_request(int client_sock, int server_port, const char *client_ip, const char *doc_name) {
+void handle_document_request(int client_sock, int server_port, const char *client_ip, const char *doc_name)
+{
     char path[256];
-    snprintf(path, sizeof(path), "../../docs/%s", doc_name); // 문서 경로 생성
+    snprintf(path, sizeof(path), "../../docs/%s", doc_name);
 
-    // 문서 파일 열기
-    FILE *file = fopen(path, "rb"); // 바이너리 모드로 열기
+    FILE *file = fopen(path, "rb");
     char response[9999];
-    if (!file) {
-        // 404 Not Found: 파일이 없을 경우
+    if (!file)
+    {
         snprintf(response, sizeof(response),
                  "HTTP/1.1 404 Not Found\r\n"
                  "Content-Type: text/html\r\n\r\n"
@@ -49,23 +54,51 @@ void handle_document_request(int client_sock, int server_port, const char *clien
         return;
     }
 
-    // Content-Type 결정
-    char content_type[50]; // Content-Type 저장할 버퍼
+    char content_type[50];
     find_mime(content_type, doc_name);
 
     // 응답 헤더 전송
     snprintf(response, sizeof(response),
              "HTTP/1.1 200 OK\r\n"
-             "Content-Type: %s\r\n\r\n", content_type);
+             "Content-Type: %s\r\n\r\n",
+             content_type);
     send(client_sock, response, strlen(response), 0);
 
-    // 파일 내용 읽기 및 전송
-    char buffer[8192];
-    size_t bytes_read;
-    while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
-        send(client_sock, buffer, bytes_read, 0);
+    // 파일 내용 전송
+    char *buffer = malloc(CHUNK_SIZE);
+    if (!buffer)
+    {
+        fclose(file);
+        return;
     }
 
+    while (1)
+    {
+        size_t bytes_read = fread(buffer, 1, CHUNK_SIZE, file);
+        if (bytes_read == 0)
+            break; // EOF 또는 에러
+
+        size_t total_sent = 0;
+        while (total_sent < bytes_read)
+        {
+            ssize_t sent = send(client_sock, buffer + total_sent, bytes_read - total_sent, 0);
+            if (sent < 0)
+            {
+                if (errno == 11)
+                {
+                    usleep(1000); // 1ms 대기
+                    continue;
+                }
+                // 실제 에러 발생
+                free(buffer);
+                fclose(file);
+                return;
+            }
+            total_sent += sent;
+        }
+    }
+
+    free(buffer);
     fclose(file);
     log_http_response(server_port, client_ip, 200, response);
 }

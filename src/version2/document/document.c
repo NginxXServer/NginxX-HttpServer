@@ -6,9 +6,11 @@
 #include <sys/socket.h>
 
 // URI로부터 Content-Type 찾기
-void find_mime(char *ct_type, const char *uri) {
+void find_mime(char *ct_type, const char *uri)
+{
     const char *ext = strrchr(uri, '.'); // 확장자 찾기
-    if (!ext) {
+    if (!ext)
+    {
         strcpy(ct_type, "text/plain"); // 확장자가 없으면 기본값
         return;
     }
@@ -27,16 +29,17 @@ void find_mime(char *ct_type, const char *uri) {
         strcpy(ct_type, "text/plain"); // 기본 MIME 타입
 }
 
-
 // 문서 요청 처리
-void handle_document_request(int client_sock, int server_port, const char *client_ip, const char *doc_name) {
+void handle_document_request(int client_sock, int server_port, const char *client_ip, const char *doc_name)
+{
     char path[256];
     snprintf(path, sizeof(path), "../../docs/%s", doc_name); // 문서 경로 생성
 
     // 문서 파일 열기
     FILE *file = fopen(path, "rb"); // 바이너리 모드로 열기
     char response[9999];
-    if (!file) {
+    if (!file)
+    {
         // 404 Not Found: 파일이 없을 경우
         snprintf(response, sizeof(response),
                  "HTTP/1.1 404 Not Found\r\n"
@@ -56,13 +59,15 @@ void handle_document_request(int client_sock, int server_port, const char *clien
     // 응답 헤더 전송
     snprintf(response, sizeof(response),
              "HTTP/1.1 200 OK\r\n"
-             "Content-Type: %s\r\n\r\n", content_type);
+             "Content-Type: %s\r\n\r\n",
+             content_type);
     send(client_sock, response, strlen(response), 0);
 
     // 파일 내용 읽기 및 전송
     char buffer[8192];
     size_t bytes_read;
-    while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+    while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0)
+    {
         send(client_sock, buffer, bytes_read, 0);
     }
 
